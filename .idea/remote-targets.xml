@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="RemoteTargetsManager">
+    <targets>
+      <target name="hackerpi-container" type="docker" uuid="deb4f1c4-aa0f-45e6-b2c0-80ef157b5f69">
+        <config>
+          <option name="targetPlatform">
+            <TargetPlatform />
+          </option>
+          <option name="buildImageConfig">
+            <BuildImageConfig>
+              <option name="builtImageTag" value="hackerpi" />
+              <option name="dockerFile" value="Dockerfile" />
+            </BuildImageConfig>
+          </option>
+        </config>
+        <ContributedStateBase type="RsLanguageRuntime">
+          <config>
+            <option name="cargoPath" value="/usr/local/cargo/bin/cargo" />
+            <option name="cargoVersion" value="1.63.0 (fd9c4297c 2022-07-01)" />
+            <option name="rustcPath" value="/usr/local/cargo/bin/rustc" />
+            <option name="rustcVersion" value="1.63.0 (4b91a6ea7 2022-08-08)" />
+          </config>
+        </ContributedStateBase>
+      </target>
+      <target name="hackpi" type="docker-compose" uuid="6aa5ae0b-146c-4198-93fb-727343e88903">
+        <config>
+          <option name="targetPlatform">
+            <TargetPlatform />
+          </option>
+          <option name="configurationFiles">
+            <list>
+              <option value="$PROJECT_DIR$/docker-compose.yml" />
+            </list>
+          </option>
+          <option name="serviceName" value="hackpi" />
+        </config>
+        <ContributedStateBase type="RsLanguageRuntime">
+          <config>
+            <option name="cargoPath" value="/usr/local/cargo/bin/cargo" />
+            <option name="cargoVersion" value="1.63.0 (fd9c4297c 2022-07-01)" />
+            <option name="rustcPath" value="/usr/local/cargo/bin/rustc" />
+            <option name="rustcVersion" value="1.63.0 (4b91a6ea7 2022-08-08)" />
+          </config>
+        </ContributedStateBase>
+      </target>
+    </targets>
+  </component>
+</project>
