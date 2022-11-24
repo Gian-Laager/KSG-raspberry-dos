@@ -53,7 +53,7 @@ fn print_counter(counter: Arc<dyn AtomicCounter<PrimitiveType = usize>>, thresho
     }
 }
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 16)]
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 // #[tokio::main()]
 async fn main() {
     let attack_counter: Arc<dyn AtomicCounter<PrimitiveType = usize>> =
@@ -78,7 +78,7 @@ async fn main() {
     //
     // let ports = scanner.run().await;
     //
-    let ports = [SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0,0,0,0), 8080))];
+    let ports = [SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192,168,1,64), 8080))];
     println!("Attacking addresses: {:#?}", ports);
     let attackers = ports.iter().map(|addr| {
         Attacker::new(
