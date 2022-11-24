@@ -1,6 +1,7 @@
 use crate::dos::Attacker;
 use crate::rust_scan::port_strategy::SerialRange;
 use crate::rust_scan::{PortRange, PortStrategy, ScanOrder};
+use futures::prelude::*;
 use rust_scan::Scanner;
 use std::borrow::BorrowMut;
 use std::net::{IpAddr, Ipv4Addr};
@@ -8,7 +9,7 @@ use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 use std::{io, thread, time};
-use futures::prelude::*;
+use std::net::*;
 
 #[macro_use]
 extern crate tokio;
@@ -31,7 +32,6 @@ fn print_counter(counter: Arc<dyn AtomicCounter<PrimitiveType = usize>>, thresho
     let mut prints_done: usize = 0;
     let mut previous_time = time::SystemTime::now();
     let mut previous_count: usize = 0;
-
     loop {
         if counter.get() >= threshold * (prints_done + 1) {
             let val = counter.get();
@@ -43,13 +43,13 @@ fn print_counter(counter: Arc<dyn AtomicCounter<PrimitiveType = usize>>, thresho
                     / (time::SystemTime::now()
                         .duration_since(previous_time)
                         .unwrap()
-                        .as_secs() as f64)
+                        .as_micros() as f64 / 1e6)
             );
 
             previous_count = val;
             previous_time = time::SystemTime::now();
         }
-        sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(100));
     }
 }
 
@@ -58,51 +58,65 @@ fn print_counter(counter: Arc<dyn AtomicCounter<PrimitiveType = usize>>, thresho
 async fn main() {
     let attack_counter: Arc<dyn AtomicCounter<PrimitiveType = usize>> =
         Arc::new(RelaxedCounter::new(0));
-    let scanner = Scanner::new(
-        &[IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))],
-        16,
-        Duration::from_millis(50),
-        32,
-        false,
-        PortStrategy::pick(
-            &Some(PortRange {
-                start: 500,
-                end: 10000,
-            }),
-            None,
-            ScanOrder::Serial,
-        ),
-        false,
-    );
 
-    let ports = scanner.run().await;
-
+    // let scanner = Scanner::new(
+    //     &[IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))],
+    //     16,
+    //     Duration::from_millis(50),
+    //     32,
+    //     false,
+    //     PortStrategy::pick(
+    //         &Some(PortRange {
+    //             start: 500,
+    //             end: 10000,
+    //         }),
+    //         None,
+    //         ScanOrder::Serial,
+    //     ),
+    //     false,
+    // );
+    //
+    // let ports = scanner.run().await;
+    //
+    let ports = [SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0,0,0,0), 8080))];
     println!("Attacking addresses: {:#?}", ports);
     let attackers = ports.iter().map(|addr| {
         Attacker::new(
             *addr,
             Vec::from("CREATE TABLE test"),
-            100,
+            16,
             attack_counter.clone(),
         )
     });
+    
 
     // sleep(Duration::from_secs(10));
     let counter_print = attack_counter.clone();
-    let _handler = thread::spawn(move || print_counter(counter_print, 1000));
+    let _handler = thread::spawn(move || print_counter(counter_print, 50000));
 
     attackers
         .clone()
         .filter(|res| res.is_err())
         .for_each(|err| println!("Error: {}", err.err().unwrap()));
 
-
-    let mut attack_futures = attackers
+    let mut handlers = attackers
         .filter(|res| res.is_ok())
         .map(|ok_att| tokio::spawn(ok_att.unwrap().run()))
-        .collect::<FuturesUnordered<_>>();
+        .collect::<Vec<_>>();
 
-    futures::future::join_all(&attack_futures).await;
+    let results = futures::future::join_all(handlers).await;
+
+    for handler in results.iter() {
+        match handler {
+            Ok(Ok(_)) => {}
+            Err(e) => {
+                println!("{}", e);
+            }
+            Ok(Err(errs)) => {
+                println!("{}", errs);
+            }
+        }
+    }
 
     println!("Attacking done");
     // for attack in attackers {

