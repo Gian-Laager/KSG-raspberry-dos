@@ -89,7 +89,7 @@ pub async fn parse_cmd_args() -> Args {
 
     let mut addresses = vec![];
     for ip_port_str in std::env::args().skip(1) {
-        if ip_port_str == "--payload" {
+        if ip_port_str == "--payload" || ip_port_str == "-p" {
             break;
         }
         let ip_str = ip_port_str.split(":").collect::<Vec<&str>>()[0];
