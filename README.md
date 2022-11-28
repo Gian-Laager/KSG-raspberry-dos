@@ -9,4 +9,4 @@ Download the code and run
 ```
 sh INSTALL
 ```
-in the directory. The program will then be installed and is available with the command 
+in the directory. The program will then be installed and is available with the command `hacking_dev`. 
