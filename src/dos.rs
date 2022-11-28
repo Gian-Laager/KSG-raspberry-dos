@@ -49,12 +49,16 @@ struct AttackerThread {
 }
 
 impl AttackerThread {
+    /**
+     * Run ATTACKS_PER_THREAD number of attacks serially
+     */
     fn attack_once(address: &SocketAddr, payload: &[u8], counter: Arc<dyn AtomicCounter<PrimitiveType=usize>>) -> io::Result<()> {
         let mut connection = TcpStream::connect(address)?;
         for mut i in 0..ATTACKS_PER_THREAD {
             let err_write =connection.write_all(payload);
             let err_flush = connection.flush();
 
+            // ignore errors and reastablish connection
             if let Err(err) = err_write {
                 i -= 1;
                 connection = TcpStream::connect(address)?;
@@ -71,7 +75,10 @@ impl AttackerThread {
         }
         Ok(())
     }
-
+    
+    /**
+     * Starts self.attacks_per_cycle number of attacks in parallel
+     */ 
     fn attack(&self) -> Result<(), Vec<Error>> {
         let addr = &self.address;
         let payload = self.payload.as_slice();
@@ -95,6 +102,9 @@ impl AttackerThread {
         return Err(errors);
     }
 
+    /**
+     * Main loop of attack
+     */
     async fn run(self) -> Result<(), Vec<Error>> {
         let mut state = START;
         loop {
@@ -144,7 +154,7 @@ impl Attacker {
         let mut attacker = Attacker {
             signal_sender: send,
             future: tokio::spawn(async move {
-                attacker_thread.run().await
+                attacker_thread.run().await // creates a new future on another thread 
             }),
         };
 
